@@ -159,7 +159,7 @@ export default function BrewprintApp() {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const timerRef = useRef(null);
 
-  // --- Guided Brew State (New Feature) ---
+  // --- Guided Brew State ---
   const [guideSeconds, setGuideSeconds] = useState(0);
   const [isGuideRunning, setIsGuideRunning] = useState(false);
   const guideTimerRef = useRef(null);
@@ -413,34 +413,26 @@ export default function BrewprintApp() {
       ignoreElements: (element) => element.classList.contains('no-export'), // IGNORE CAMERA ICON
       onclone: (clonedDoc) => {
           // EXPERIMENTAL FIXES FOR EXPORT
-          
-          // 1. Fix Top Margin (Push content down significantly)
           const header = clonedDoc.getElementById('card-header');
-          if (header) {
-             header.style.marginTop = '40px'; 
-          }
+          if (header) header.style.marginTop = '40px'; 
           
-          // 2. Fix Location Icon Alignment & Spacing
           const locationContainer = clonedDoc.getElementById('location-container');
           if (locationContainer) {
               locationContainer.style.display = 'flex';
               locationContainer.style.alignItems = 'center';
               locationContainer.style.marginTop = '-4px'; 
               
-              // Target the text
               const text = locationContainer.querySelector('p');
               if (text) {
                   text.style.marginTop = '4px'; 
               }
               
-              // Target the icon
               const icon = locationContainer.querySelector('svg');
               if (icon) {
                  icon.style.marginTop = '18px'; 
               }
           }
 
-          // 3. Fix Yield Icon Alignment
           const yieldContainer = clonedDoc.getElementById('yield-container');
           if (yieldContainer) {
               const icon = yieldContainer.querySelector('svg');
@@ -449,10 +441,9 @@ export default function BrewprintApp() {
               }
           }
 
-          // 4. Fix Chip Alignment - Specific Padding & Margin
           const chipsContainer = clonedDoc.getElementById('chips-container');
           if (chipsContainer) {
-             chipsContainer.style.marginTop = '20px'; // Set container margin to 20px
+             chipsContainer.style.marginTop = '20px'; 
           }
 
           const chips = clonedDoc.querySelectorAll('.stats-chip');
@@ -460,8 +451,8 @@ export default function BrewprintApp() {
              chip.style.display = 'flex';
              chip.style.alignItems = 'center';
              chip.style.justifyContent = 'center';
-             chip.style.paddingTop = '4px';  // Set top padding to 4px
-             chip.style.paddingBottom = '14px'; // Set bottom padding to 14px
+             chip.style.paddingTop = '4px'; 
+             chip.style.paddingBottom = '14px'; 
              chip.style.lineHeight = '1';
           });
       }
@@ -544,7 +535,7 @@ export default function BrewprintApp() {
     setTimerSeconds(0);
   };
 
-  // --- Guided Brew Logic (New Feature) ---
+  // --- Guided Brew Logic ---
   useEffect(() => {
     if (isGuideRunning) {
       guideTimerRef.current = setInterval(() => {
@@ -573,23 +564,16 @@ export default function BrewprintApp() {
 
   const getCurrentStep = () => {
     if (!selectedBrew || !selectedBrew.steps) return null;
-    
-    // Filter out Prep steps for time comparison, or handle them
     const steps = selectedBrew.steps;
-    
-    // Find active step
     for (let i = 0; i < steps.length; i++) {
         const currentStepTime = timeToSeconds(steps[i].time);
         const nextStepTime = i + 1 < steps.length ? timeToSeconds(steps[i+1].time) : Infinity;
-        
-        // Handle Prep
         if (currentStepTime === -1 && guideSeconds === 0) return steps[i];
-
         if (guideSeconds >= currentStepTime && guideSeconds < nextStepTime && currentStepTime !== -1) {
             return steps[i];
         }
     }
-    return steps[steps.length - 1]; // Return last step if finished
+    return steps[steps.length - 1]; 
   };
 
   const getNextStep = () => {
@@ -608,7 +592,17 @@ export default function BrewprintApp() {
     return `${m}:${s}`;
   };
 
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+  const toggleTheme = () => {
+      const newMode = !isDarkMode;
+      setIsDarkMode(newMode);
+      if (newMode) {
+          document.documentElement.classList.add('dark');
+          localStorage.setItem('brewprint-theme', 'dark');
+      } else {
+          document.documentElement.classList.remove('dark');
+          localStorage.setItem('brewprint-theme', 'light');
+      }
+  };
 
   // --- Views ---
 
@@ -946,8 +940,8 @@ export default function BrewprintApp() {
 
                   {/* Watermark */}
                   <div className="text-center pb-2 drop-shadow-md">
-                      <p className="text-[10px] text-white/60 font-medium mb-0.5">Created with Brewprint</p>
-                      <p className="text-xs text-white/90 font-bold tracking-wide">try on: derysudrajat.github.io/brewprint</p>
+                      <p className="text-[10px] text-white/80 font-medium mb-0.5">Created with Brewprint</p>
+                      <p className="text-xs text-white font-bold tracking-wide shadow-black">try on: derysudrajat.github.io/brewprint</p>
                   </div>
                 </div>
              </div>
@@ -1180,77 +1174,102 @@ export default function BrewprintApp() {
     const nextStep = getNextStep();
 
     return (
-      <div className="max-w-3xl mx-auto w-full pb-32 animate-fade-in flex flex-col min-h-[80vh] relative">
+      <div className="max-w-3xl mx-auto w-full h-[calc(100vh-140px)] md:h-auto flex flex-col relative animate-fade-in">
          {/* Header */}
-         <div className="flex items-center gap-4 mb-6">
+         <div className="flex items-center gap-4 mb-2 md:mb-10 sticky top-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm py-2 shrink-0">
            <button onClick={() => { setActiveTab('detail'); resetGuide(); }} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">
               <ArrowLeft className="w-5 h-5" />
            </button>
            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Guided Brew</h1>
         </div>
 
-        {/* Timer Display */}
-        <div className="flex-1 flex flex-col items-center justify-center space-y-8">
-            <div className="relative w-80 h-80 flex items-center justify-center">
-                {/* Outer Ring */}
-                <div className="absolute inset-0 rounded-full border-[12px] border-slate-100 dark:border-slate-800"></div>
-                {/* Active Ring - simplified animation for now */}
-                <div className={`absolute inset-0 rounded-full border-[12px] border-blue-600 border-t-transparent transition-all duration-1000 ${isGuideRunning ? 'animate-spin-slow' : ''}`} style={{ animationDuration: '180s' }}></div>
-                
-                <div className="flex flex-col items-center z-10">
-                    <span className="text-8xl font-mono font-bold text-slate-900 dark:text-white tracking-tighter">
-                        {formatTime(guideSeconds)}
-                    </span>
-                    <span className="text-sm font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mt-2">Total Time</span>
+        {/* Content Split: Row on Desktop, Col on Mobile */}
+        <div className="flex-1 flex flex-col md:flex-row items-center md:items-center md:justify-center gap-6 md:gap-20 overflow-y-auto md:overflow-visible custom-scrollbar pb-4">
+            
+            {/* Left Column: Timer & Controls */}
+            <div className="flex flex-col items-center justify-center flex-shrink-0">
+                <div className="relative w-64 h-64 md:w-96 md:h-96 flex items-center justify-center">
+                    {/* Rings */}
+                    <div className="absolute inset-0 rounded-full border-[12px] md:border-[16px] border-slate-200 dark:border-slate-800"></div>
+                    <div className={`absolute inset-0 rounded-full border-[12px] md:border-[16px] border-blue-600 border-t-transparent transition-all duration-1000 ${isGuideRunning ? 'animate-spin-slow' : ''}`} style={{ animationDuration: '180s' }}></div>
+                    
+                    {/* Timer Text & Controls */}
+                    <div className="flex flex-col items-center z-10 gap-2 md:gap-4">
+                        <div className="text-center">
+                            <span className="block text-6xl md:text-8xl font-mono font-bold text-slate-900 dark:text-white tracking-tighter leading-none">
+                                {formatTime(guideSeconds)}
+                            </span>
+                            <span className="text-xs md:text-sm font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">Total Time</span>
+                        </div>
+
+                        {/* Integrated Controls */}
+                        <div className="flex items-center gap-4 mt-2">
+                            <button 
+                                onClick={resetGuide}
+                                className="p-3 md:p-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                title="Reset"
+                            >
+                                <RotateCcw className="w-5 h-5 md:w-6 md:h-6" />
+                            </button>
+                            <button 
+                                onClick={toggleGuide}
+                                className={`p-4 md:p-6 rounded-full shadow-xl transition-all active:scale-95 flex items-center justify-center ${
+                                    isGuideRunning 
+                                    ? 'bg-orange-500 text-white shadow-orange-200 dark:shadow-none' 
+                                    : 'bg-blue-600 text-white shadow-blue-200 dark:shadow-none'
+                                }`}
+                            >
+                                {isGuideRunning ? <Pause className="w-8 h-8 md:w-10 md:h-10 fill-current" /> : <Play className="w-8 h-8 md:w-10 md:h-10 fill-current ml-1" />}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Current Step Card */}
-            <div className="w-full bg-blue-600 text-white p-8 rounded-[2rem] shadow-xl shadow-blue-200 dark:shadow-none text-center transform transition-all duration-500">
-                <div className="inline-block bg-white/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4">Current Step</div>
-                <h2 className="text-4xl font-bold mb-4">{currentStep.action}</h2>
-                <p className="text-blue-100 text-lg leading-relaxed max-w-md mx-auto">{currentStep.detail}</p>
-                {currentStep.weight && (
-                    <div className="mt-6 inline-flex items-center gap-2 bg-white/10 px-6 py-3 rounded-xl border border-white/20 backdrop-blur-md">
-                        <Scale className="w-5 h-5" />
-                        <span className="font-bold text-xl">{currentStep.weight}</span>
+            {/* Right Column: Instruction Cards */}
+            <div className="w-full max-w-sm flex flex-col gap-4 flex-1 md:flex-none justify-center">
+                {/* Current Step Card */}
+                <div className="w-full bg-blue-600 text-white p-6 md:p-10 rounded-[2.5rem] shadow-2xl shadow-blue-200/50 dark:shadow-none text-center transform transition-all duration-500 flex flex-col items-center relative overflow-hidden">
+                     {/* Background Pattern */}
+                     <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
+                         <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-500 rounded-full blur-2xl"></div>
+                     </div>
+
+                    <div className="relative z-10">
+                        <div className="inline-block bg-white/20 px-3 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider mb-3 md:mb-6">Current Step</div>
+                        <h2 className="text-3xl md:text-5xl font-bold mb-3 leading-tight">{currentStep.action}</h2>
+                        <p className="text-blue-100 text-base md:text-lg leading-relaxed max-w-md mx-auto">{currentStep.detail}</p>
+                        
+                        {currentStep.weight && (
+                            <div className="mt-4 md:mt-8 inline-flex items-center gap-2 bg-white/10 px-5 py-2 md:px-8 md:py-4 rounded-2xl border border-white/20 backdrop-blur-md shadow-lg">
+                                <Scale className="w-4 h-4 md:w-6 md:h-6" />
+                                <span className="font-bold text-xl md:text-2xl">{currentStep.weight}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Next Step Preview */}
+                {nextStep ? (
+                    <div className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 md:p-6 rounded-3xl flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold">
+                               <Clock className="w-6 h-6" />
+                            </div>
+                            <div className="text-left">
+                                <span className="text-[10px] md:text-xs uppercase font-bold text-slate-400 tracking-wider block mb-1">Up Next ({nextStep.time})</span>
+                                <div className="font-bold text-slate-700 dark:text-slate-200 text-base md:text-lg">{nextStep.action}</div>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="w-full bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 p-4 rounded-2xl flex items-center justify-center text-green-600 dark:text-green-400 font-bold">
+                        <CheckCircle2 className="w-5 h-5 mr-2" /> Enjoy your coffee!
                     </div>
                 )}
             </div>
 
-            {/* Next Step Preview */}
-            {nextStep && (
-                <div className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl flex items-center justify-between opacity-60">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold">
-                           <Clock className="w-5 h-5" />
-                        </div>
-                        <div className="text-left">
-                            <span className="text-xs uppercase font-bold text-slate-400">Up Next ({nextStep.time})</span>
-                            <div className="font-bold text-slate-700 dark:text-slate-300">{nextStep.action}</div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-
-        {/* Controls */}
-        <div className="fixed bottom-0 left-0 right-0 p-6 md:pl-32 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-t border-slate-100 dark:border-slate-800 z-40">
-           <div className="max-w-3xl mx-auto flex items-center justify-center gap-8">
-              <button 
-                onClick={resetGuide}
-                className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
-              >
-                 <RotateCcw className="w-6 h-6" />
-              </button>
-
-              <button 
-                onClick={toggleGuide}
-                className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl shadow-blue-500/30 hover:scale-105 active:scale-95 transition-all ${isGuideRunning ? 'bg-orange-500 text-white' : 'bg-blue-600 text-white'}`}
-              >
-                 {isGuideRunning ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-2" />}
-              </button>
-           </div>
         </div>
       </div>
     );
