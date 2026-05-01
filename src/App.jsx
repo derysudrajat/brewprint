@@ -163,6 +163,7 @@ export default function BrewprintApp() {
   const [guideSeconds, setGuideSeconds] = useState(0);
   const [isGuideRunning, setIsGuideRunning] = useState(false);
   const guideTimerRef = useRef(null);
+  const wakeLockRef = useRef(null);
 
   // --- Theme Init & Script Loader ---
   useEffect(() => {
@@ -537,14 +538,54 @@ export default function BrewprintApp() {
 
   // --- Guided Brew Logic ---
   useEffect(() => {
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    };
+
     if (isGuideRunning) {
+      requestWakeLock();
       guideTimerRef.current = setInterval(() => {
-        setGuideSeconds(prev => prev + 1);
+        setGuideSeconds(prev => {
+          // Calculate total time excluding "Serve"
+          const timedSteps = selectedBrew.steps
+            .filter(s => s.time !== 'Prep' && !s.action.includes('Serve'))
+            .map((s, idx, arr) => {
+              const startTime = timeToSeconds(s.time);
+              const nextS = idx + 1 < arr.length ? arr[idx + 1] : null;
+              const endTime = nextS ? timeToSeconds(nextS.time) : startTime + 30;
+              return { startTime, endTime };
+            });
+          
+          const maxTime = timedSteps.length > 0 ? timedSteps[timedSteps.length - 1].endTime : Infinity;
+          
+          if (prev >= maxTime) {
+            setIsGuideRunning(false);
+            return prev;
+          }
+          return prev + 1;
+        });
       }, 1000);
     } else {
       clearInterval(guideTimerRef.current);
+      releaseWakeLock();
     }
-    return () => clearInterval(guideTimerRef.current);
+    return () => {
+      clearInterval(guideTimerRef.current);
+      releaseWakeLock();
+    };
   }, [isGuideRunning]);
 
   const toggleGuide = () => setIsGuideRunning(!isGuideRunning);
@@ -1173,78 +1214,134 @@ export default function BrewprintApp() {
     const currentStep = getCurrentStep();
     const nextStep = getNextStep();
 
+    // Filter timed steps and calculate durations (Exclude Serve)
+    const timedSteps = selectedBrew.steps
+      .filter(s => s.time !== 'Prep' && !s.action.includes('Serve'))
+      .map((s, idx, arr) => {
+        const startTime = timeToSeconds(s.time);
+        const endTime = idx + 1 < arr.length ? timeToSeconds(arr[idx + 1].time) : startTime + 30;
+        return { ...s, startTime, endTime, duration: endTime - startTime };
+      });
+
+    const totalBrewTime = timedSteps.length > 0 ? timedSteps[timedSteps.length - 1].endTime : 0;
+    
+    // Segmented Progress Logic
+    const radius = 150;
+    const circumference = 2 * Math.PI * radius;
+    const gapSize = 4; // Gap between segments in pixels
+
     return (
-      <div className="max-w-3xl mx-auto w-full h-[calc(100vh-140px)] md:h-auto flex flex-col relative animate-fade-in">
-         {/* Header */}
-         <div className="flex items-center gap-4 mb-2 md:mb-10 sticky top-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm py-2 shrink-0">
+      <div className="max-w-6xl mx-auto w-full h-[calc(100dvh-100px)] lg:h-auto flex flex-col relative animate-fade-in px-4">
+         {/* Header - Compact for mobile */}
+         <div className="flex items-center gap-4 mb-2 lg:mb-10 sticky top-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm py-2 shrink-0">
            <button onClick={() => { setActiveTab('detail'); resetGuide(); }} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">
               <ArrowLeft className="w-5 h-5" />
            </button>
-           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Guided Brew</h1>
+           <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">Guided Brew</h1>
         </div>
 
-        {/* Content Split: Row on Desktop, Col on Mobile */}
-        <div className="flex-1 flex flex-col md:flex-row items-center md:items-center md:justify-center gap-6 md:gap-20 overflow-y-auto md:overflow-visible custom-scrollbar pb-4">
+        {/* Content Split: Row on Large Desktop, Col on Mobile/Tablet */}
+        <div className="flex-1 flex flex-col lg:flex-row items-center lg:justify-center gap-4 sm:gap-6 lg:gap-16 xl:gap-24 overflow-y-auto lg:overflow-visible custom-scrollbar pb-8">
             
-            {/* Left Column: Timer & Controls */}
-            <div className="flex flex-col items-center justify-center flex-shrink-0">
-                <div className="relative w-64 h-64 md:w-96 md:h-96 flex items-center justify-center">
-                    {/* Rings */}
-                    <div className="absolute inset-0 rounded-full border-[12px] md:border-[16px] border-slate-200 dark:border-slate-800"></div>
-                    <div className={`absolute inset-0 rounded-full border-[12px] md:border-[16px] border-blue-600 border-t-transparent transition-all duration-1000 ${isGuideRunning ? 'animate-spin-slow' : ''}`} style={{ animationDuration: '180s' }}></div>
+            {/* Left Column: Timer & Controls - Scaled for devices */}
+            <div className="flex flex-col items-center justify-center shrink-0 py-2">
+                <div className="relative w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-96 lg:h-96 flex items-center justify-center">
+                    {/* Segmented Progress Ring SVG */}
+                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 400 400">
+                      {timedSteps.map((step, idx) => {
+                        const startPercent = step.startTime / totalBrewTime;
+                        const durationPercent = step.duration / totalBrewTime;
+                        
+                        const segmentTotalLength = durationPercent * circumference;
+                        const drawLength = Math.max(0, segmentTotalLength - gapSize);
+                        
+                        let segmentProgress = 0;
+                        if (guideSeconds > step.startTime) {
+                          segmentProgress = Math.min((guideSeconds - step.startTime) / step.duration, 1);
+                        }
+                        const progressLength = segmentProgress * drawLength;
+                        const rotation = (startPercent * 360);
+
+                        return (
+                          <g key={idx} transform={`rotate(${rotation}, 200, 200)`}>
+                            <circle
+                              cx="200"
+                              cy="200"
+                              r={radius}
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="16"
+                              className="text-slate-200 dark:text-slate-800 transition-colors"
+                              strokeDasharray={`${drawLength} ${circumference}`}
+                              strokeLinecap="round"
+                            />
+                            <circle
+                              cx="200"
+                              cy="200"
+                              r={radius}
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="16"
+                              className="text-blue-600 transition-all duration-1000 ease-linear"
+                              strokeDasharray={`${progressLength} ${circumference}`}
+                              strokeLinecap="round"
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
                     
-                    {/* Timer Text & Controls */}
+                    {/* Timer Text & Controls - Re-scaled */}
                     <div className="flex flex-col items-center z-10 gap-2 md:gap-4">
                         <div className="text-center">
-                            <span className="block text-6xl md:text-8xl font-mono font-bold text-slate-900 dark:text-white tracking-tighter leading-none">
+                            <span className="block text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-mono font-bold text-slate-900 dark:text-white tracking-tighter leading-none">
                                 {formatTime(guideSeconds)}
                             </span>
-                            <span className="text-xs md:text-sm font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">Total Time</span>
+                            <span className="text-[10px] sm:text-xs md:text-sm font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">Total Time</span>
                         </div>
 
-                        {/* Integrated Controls */}
-                        <div className="flex items-center gap-4 mt-2">
+                        <div className="flex items-center gap-3 sm:gap-4 mt-1 sm:mt-2">
                             <button 
                                 onClick={resetGuide}
-                                className="p-3 md:p-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                className="p-2 sm:p-3 md:p-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                                 title="Reset"
                             >
-                                <RotateCcw className="w-5 h-5 md:w-6 md:h-6" />
+                                <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
                             </button>
                             <button 
                                 onClick={toggleGuide}
-                                className={`p-4 md:p-6 rounded-full shadow-xl transition-all active:scale-95 flex items-center justify-center ${
+                                className={`p-3 sm:p-4 md:p-6 rounded-full shadow-xl transition-all active:scale-95 flex items-center justify-center ${
                                     isGuideRunning 
                                     ? 'bg-orange-500 text-white shadow-orange-200 dark:shadow-none' 
                                     : 'bg-blue-600 text-white shadow-blue-200 dark:shadow-none'
                                 }`}
                             >
-                                {isGuideRunning ? <Pause className="w-8 h-8 md:w-10 md:h-10 fill-current" /> : <Play className="w-8 h-8 md:w-10 md:h-10 fill-current ml-1" />}
+                                {isGuideRunning ? <Pause className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 fill-current" /> : <Play className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 fill-current ml-1" />}
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Right Column: Instruction Cards */}
-            <div className="w-full max-w-sm flex flex-col gap-4 flex-1 md:flex-none justify-center">
-                {/* Current Step Card */}
-                <div className="w-full bg-blue-600 text-white p-6 md:p-10 rounded-[2.5rem] shadow-2xl shadow-blue-200/50 dark:shadow-none text-center transform transition-all duration-500 flex flex-col items-center relative overflow-hidden">
+            {/* Right Column: Instruction Cards - Responsive max-width */}
+            <div className="w-full max-w-sm sm:max-w-md lg:max-w-sm xl:max-w-md flex flex-col gap-2 sm:gap-4 shrink-0 lg:justify-center">
+                {/* Current Step Card - Refined sizing */}
+                <div className="w-full bg-blue-600 text-white p-4 sm:p-6 lg:p-8 rounded-[1.5rem] sm:rounded-[2rem] shadow-xl shadow-blue-200/50 dark:shadow-none text-center transform transition-all duration-500 flex flex-col items-center relative overflow-hidden">
                      {/* Background Pattern */}
                      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
-                         <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-500 rounded-full blur-2xl"></div>
+                         <div className="absolute -top-10 -right-10 w-32 h-32 bg-white rounded-full blur-3xl"></div>
+                         <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500 rounded-full blur-2xl"></div>
                      </div>
 
                     <div className="relative z-10">
-                        <div className="inline-block bg-white/20 px-3 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider mb-3 md:mb-6">Current Step</div>
-                        <h2 className="text-3xl md:text-5xl font-bold mb-3 leading-tight">{currentStep.action}</h2>
-                        <p className="text-blue-100 text-base md:text-lg leading-relaxed max-w-md mx-auto">{currentStep.detail}</p>
+                        <div className="inline-block bg-white/20 px-2.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold uppercase tracking-wider mb-1.5 sm:mb-3 lg:mb-4">Current Step</div>
+                        <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-1.5 sm:mb-2 leading-tight">{currentStep.action}</h2>
+                        <p className="text-blue-50 text-xs sm:text-sm lg:text-base leading-relaxed max-w-xs mx-auto line-clamp-2 lg:line-clamp-none opacity-90">{currentStep.detail}</p>
                         
                         {currentStep.weight && (
-                            <div className="mt-4 md:mt-8 inline-flex items-center gap-2 bg-white/10 px-5 py-2 md:px-8 md:py-4 rounded-2xl border border-white/20 backdrop-blur-md shadow-lg">
-                                <Scale className="w-4 h-4 md:w-6 md:h-6" />
-                                <span className="font-bold text-xl md:text-2xl">{currentStep.weight}</span>
+                            <div className="mt-2.5 sm:mt-4 lg:mt-6 inline-flex items-center gap-1.5 sm:gap-2 bg-white/10 px-3.5 py-1 sm:px-5 sm:py-2 lg:px-6 lg:py-3 rounded-lg sm:rounded-xl border border-white/20 backdrop-blur-md shadow-lg">
+                                <Scale className="w-3.5 h-3.5 lg:w-5 lg:h-5" />
+                                <span className="font-bold text-base sm:text-lg md:text-xl">{currentStep.weight}</span>
                             </div>
                         )}
                     </div>
@@ -1252,20 +1349,20 @@ export default function BrewprintApp() {
 
                 {/* Next Step Preview */}
                 {nextStep ? (
-                    <div className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 md:p-6 rounded-3xl flex items-center justify-between shadow-sm">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold">
-                               <Clock className="w-6 h-6" />
+                    <div className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-2.5 sm:p-4 lg:p-5 rounded-xl sm:rounded-2xl flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold">
+                               <Clock className="w-4.5 h-4.5 sm:w-5.5 sm:h-5.5" />
                             </div>
                             <div className="text-left">
-                                <span className="text-[10px] md:text-xs uppercase font-bold text-slate-400 tracking-wider block mb-1">Up Next ({nextStep.time})</span>
-                                <div className="font-bold text-slate-700 dark:text-slate-200 text-base md:text-lg">{nextStep.action}</div>
+                                <span className="text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-0.5">Up Next ({nextStep.time})</span>
+                                <div className="font-bold text-slate-700 dark:text-slate-200 text-xs sm:text-sm lg:text-base">{nextStep.action}</div>
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 p-4 rounded-2xl flex items-center justify-center text-green-600 dark:text-green-400 font-bold">
-                        <CheckCircle2 className="w-5 h-5 mr-2" /> Enjoy your coffee!
+                    <div className="w-full bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 p-2.5 sm:p-4 rounded-xl flex items-center justify-center text-green-600 dark:text-green-400 font-bold text-xs sm:text-sm">
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Enjoy your coffee!
                     </div>
                 )}
             </div>
